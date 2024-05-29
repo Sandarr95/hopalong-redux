@@ -14,7 +14,9 @@ import Hopalong, {
   DEFAULT_SPEED,
   DEFAULT_SUBSETS,
 } from './hopalong';
-import textureUrl from './images/galaxy.png';
+//import textureUrl from './images/galaxy.png';
+import textureUrl from './images/poppi_logo_inverted.png';
+//import textureUrl from './images/itw.png';
 import { Settings, SimSettings } from './types/hopalong';
 import Detector from './util/Detector';
 
