@@ -49,3 +49,19 @@ export type ToolbarSettings = {
 };
 export type Settings = SimSettings & ToolbarSettings;
 export type OnSettingsChange<T> = (settings: Partial<T>) => unknown;
+
+export type Movement = {
+  speed: number;
+  rotationSpeed: number;
+  x: number;
+  y: number;
+};
+
+export type Bounds = {
+  width: number;
+  height: number;
+};
+
+export interface MovementStrategy {
+  (bounds: Bounds, current: Movement, gamepad: Gamepad): Movement;
+}

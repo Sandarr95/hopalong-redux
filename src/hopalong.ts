@@ -16,6 +16,8 @@ import {
   WebGLRenderer,
 } from 'three';
 import {
+  Bounds,
+  Movement,
   Orbit,
   OrbitParams,
   ParticleSet,
@@ -24,6 +26,7 @@ import {
   SubsetPoint,
 } from './types/hopalong';
 import { hsvToHsl } from './util/color';
+import { buildGamepadMovementStrategy } from './gamepad';
 
 const SCALE_FACTOR = 1500;
 const CAMERA_BOUND = 200;
@@ -72,6 +75,20 @@ type ConstructorProps = {
   onSettingsUpdate: (settings: Settings) => unknown;
 };
 
+function hopalong(x: number, y: number, a: number, b: number, c: number) {
+  return [
+    y - Math.sqrt(Math.abs(b * x - c)) * Math.sign(x),
+    a - x
+  ]
+}
+
+function hopalong2(x: number, y: number, a: number, b: number, c: number) {
+  return [
+    y - 1.0 - Math.sqrt(Math.abs(b * x - 1.0 - c)) * Math.sign(x - 1.0),
+    a - x - 1.0
+  ]
+}
+
 export default class Hopalong {
   // Orbit parameters
   orbitParams: OrbitParams<number> = {
@@ -104,6 +121,8 @@ export default class Hopalong {
   private numSubsets: number;
   private numLevels: number;
 
+  private controllerConnected: boolean;
+
   // Orbit data
   orbit: Orbit<number> = {
     subsets: [],
@@ -127,6 +146,7 @@ export default class Hopalong {
     this.numLevels = settings.levelCount || DEFAULT_LEVELS;
     this.numPointsSubset = settings.pointsPerSubset || DEFAULT_POINTS_SUBSET;
     this.mouseLocked = settings.mouseLocked || false;
+    this.controllerConnected = false;
 
     this.texture = texture;
     this.stats = stats;
@@ -282,6 +302,8 @@ export default class Hopalong {
     document.addEventListener('touchstart', this.onDocumentTouchStart, false);
     document.addEventListener('touchmove', this.onDocumentTouchMove, false);
     document.addEventListener('keydown', this.onKeyDown, false);
+    window.addEventListener('gamepadconnected', this.onControllerConnected, false);
+    window.addEventListener('gamepaddisconnected', this.onControllerDisconnected, false);
     window.addEventListener('resize', this.onWindowResize, false);
   }
 
@@ -397,23 +419,9 @@ export default class Hopalong {
       for (let i = 0; i < numPointsSubset; i++) {
         // Iteration formula (generalization of the Barry Martin's original one)
 
-        if (choice < 0.5) {
-          z = dl + Math.sqrt(Math.abs(bl * x - cl));
-        } else if (choice < 0.75) {
-          z = dl + Math.sqrt(Math.sqrt(Math.abs(bl * x - cl)));
-        } else {
-          z = dl + Math.log(2 + Math.sqrt(Math.abs(bl * x - cl)));
-        }
-
-        if (x > 0) {
-          x1 = y - z;
-        } else if (x == 0) {
-          x1 = y;
-        } else {
-          x1 = y + z;
-        }
-        y = al - x;
-        x = x1 + el;
+        const [xn, yn] = hopalong(x, y, a, b, c)
+        x = xn;
+        y = yn;
 
         curSubset[i].x = x;
         curSubset[i].y = y;
@@ -516,7 +524,7 @@ export default class Hopalong {
     this.mouseX = 0;
     this.mouseY = 0;
 
-    this.setMouseLock();
+    this.setMouseLock(true);
   }
 
   getMouseX() {
@@ -611,11 +619,98 @@ export default class Hopalong {
     this.fireSettingsChange();
   }
 
+  getBounds(): Bounds {
+    return {
+      width: this.windowHalfX * 2,
+      height: this.windowHalfY * 2,
+    }
+  }
+
+  getCurrentMovement(): Movement {
+    return {
+      speed: this.speed,
+      rotationSpeed: this.rotationSpeed,
+      x: this.mouseX,
+      y: this.mouseY
+    }
+  }
+
+  applyMovement(movement: Movement) {
+    this.speed = movement.speed;
+    this.rotationSpeed = movement.rotationSpeed;
+    this.mouseX = movement.x;
+    this.mouseY = movement.y;
+  }
+
+  updateGamepadMovement(gamepad: Gamepad) {
+    const movementStrategyExecutor = buildGamepadMovementStrategy(gamepad);
+    const bounds = this.getBounds();
+
+    const currentMovement = this.getCurrentMovement();
+
+    const nextMovement = movementStrategyExecutor(bounds, currentMovement, gamepad);
+
+    this.applyMovement(nextMovement);
+    this.fireSettingsChange();
+  }
+
+  controllerLoop() {
+    const [ gamepad ] = navigator.getGamepads();
+    if(!this.controllerConnected || !gamepad) { return; }
+
+    this.updateGamepadMovement(gamepad);
+
+    requestAnimationFrame(this.controllerLoop);
+  }
+
+  stopMovement() {
+    this.speed = 0;
+    this.rotationSpeed = 0;
+  }
+
+  initGamepadMode() {
+    this.controllerConnected = true;
+    this.stopMovement();
+    this.recenterCamera();
+    requestAnimationFrame(this.controllerLoop);
+  }
+
+  exitGamepadMode() {
+    this.controllerConnected = false;
+  }
+
+  onControllerConnected(e) {
+    this.controllerConnected = true;
+    this.initGamepadMode();
+  }
+
+  onControllerDisconnected(e) {
+    this.controllerConnected = false;
+  }
+
   onKeyDown(event: KeyboardEvent) {
     const { key } = event;
     const keyNormalised = key.length === 1 ? key.toUpperCase() : key;
 
-    const shortcuts: { [key: string]: () => void } = {
+    const settingsShortcuts: { [key: string]: () => void } = {
+      F: () => this.changeFov(FOV_DELTA),
+      G: () => this.changeFov(-FOV_DELTA),
+      '.': () => this.changeLevelSubset(1),
+      ',': () => this.changeLevelSubset(-1),
+      P: () => this.changePointsPerSubset(POINTS_DELTA),
+      O: () => this.changePointsPerSubset(-POINTS_DELTA),
+      H: () => document.body.classList.toggle('hideCursor'),
+      C: () => this.recenterCamera()
+    };
+
+    if(keyNormalised in settingsShortcuts) {
+      settingsShortcuts[keyNormalised]();
+      return;
+    }
+
+    if(this.controllerConnected) return;
+
+    const movementShortcuts: { [key: string]: () => void } = {
       ArrowUp: () => this.changeSpeed(SPEED_DELTA),
       W: () => this.changeSpeed(SPEED_DELTA_EXTRA),
       ArrowDown: () => this.changeSpeed(-SPEED_DELTA),
@@ -624,20 +719,12 @@ export default class Hopalong {
       A: () => this.changeRotationSpeed(ROTATION_DELTA_EXTRA),
       ArrowRight: () => this.changeRotationSpeed(-ROTATION_DELTA),
       D: () => this.changeRotationSpeed(-ROTATION_DELTA_EXTRA),
-      F: () => this.changeFov(FOV_DELTA),
-      G: () => this.changeFov(-FOV_DELTA),
-      '.': () => this.changeLevelSubset(1),
-      ',': () => this.changeLevelSubset(-1),
-      P: () => this.changePointsPerSubset(POINTS_DELTA),
-      O: () => this.changePointsPerSubset(-POINTS_DELTA),
       R: () => this.resetDefaults(),
-      L: () => this.setMouseLock(),
-      H: () => document.body.classList.toggle('hideCursor'),
-      C: () => this.recenterCamera(),
+      L: () => this.setMouseLock()
     };
 
-    if (keyNormalised in shortcuts) {
-      shortcuts[keyNormalised]();
+    if (keyNormalised in movementShortcuts) {
+      movementShortcuts[keyNormalised]();
     }
   }
 
