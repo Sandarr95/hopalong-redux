@@ -68,7 +68,7 @@ function arcadeGamepadMovementStrategyBuilder(buttons: ArcadeButtonMapping): Mov
       }
       return 0;
     })();
-    const speedEasterEgg = smallRightButton.pressed && smallLeftButton.pressed ? 2 : 1;
+    const speedEasterEgg = smallRightButton.pressed && smallLeftButton.pressed ? 4 : 1;
 
     // Transverse momentum
     const rightStickHorizontal = deadzone(gamepad.axes[0]);
