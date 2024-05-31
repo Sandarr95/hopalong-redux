@@ -37,54 +37,77 @@ const stdGamepadMovementStrategy: MovementStrategy = function (
   };
 };
 
-const arcadeGamepadMovementStrategy: MovementStrategy = function (
-  bounds: Bounds,
-  current: Movement,
-  gamepad: Gamepad
-): Movement {
-  const { width, height } = bounds;
-  const { x, y } = current;
+type ArcadeButtonMapping = {
+  bigRightButtonIndex: number;
+  bigLeftButtonIndex: number;
+  smallRightButtonIndex: number;
+  smallLeftButtonIndex: number;
+};
 
-  const bigRightButton = gamepad.buttons[0];
-  const bigLeftButton = gamepad.buttons[3];
-  const speed = bigRightButton.pressed ? 8 : bigLeftButton.pressed ? 4 : 2;
+function arcadeGamepadMovementStrategyBuilder(buttons: ArcadeButtonMapping): MovementStrategy {
+  const { bigRightButtonIndex, bigLeftButtonIndex, smallRightButtonIndex, smallLeftButtonIndex } = buttons;
+  return function (bounds: Bounds, current: Movement, gamepad: Gamepad) {
+    const { width, height } = bounds;
+    const { x, y } = current;
 
-  const smallRightButton = gamepad.buttons[1];
-  const smallLeftButton = gamepad.buttons[2];
-  const rotationSpeed = (function () {
-    if (smallRightButton.pressed && smallLeftButton.pressed) {
+    const bigRightButton = gamepad.buttons[bigRightButtonIndex];
+    const bigLeftButton = gamepad.buttons[bigLeftButtonIndex];
+    const speed = bigRightButton.pressed ? 8 : bigLeftButton.pressed ? 4 : 2;
+
+    const smallRightButton = gamepad.buttons[smallRightButtonIndex];
+    const smallLeftButton = gamepad.buttons[smallLeftButtonIndex];
+    const rotationSpeed = (function () {
+      if (smallRightButton.pressed && smallLeftButton.pressed) {
+        return 0;
+      }
+      if (smallRightButton.pressed) {
+        return -0.02;
+      }
+      if (smallLeftButton.pressed) {
+        return 0.02;
+      }
       return 0;
-    }
-    if (smallRightButton.pressed) {
-      return -0.02;
-    }
-    if (smallLeftButton.pressed) {
-      return 0.02;
-    }
-    return 0;
-  })();
-  const speedEasterEgg = smallRightButton.pressed && smallLeftButton.pressed ? 2 : 1;
+    })();
+    const speedEasterEgg = smallRightButton.pressed && smallLeftButton.pressed ? 2 : 1;
 
-  // Transverse momentum
-  const rightStickHorizontal = deadzone(gamepad.axes[0]);
-  const transverseSpeedX = signedSqrt(rightStickHorizontal) * 10;
-  const newX = clamp(-width / 2, transverseSpeedX + x, width / 2);
+    // Transverse momentum
+    const rightStickHorizontal = deadzone(gamepad.axes[0]);
+    const transverseSpeedX = signedSqrt(rightStickHorizontal) * 10;
+    const newX = clamp(-width / 2, transverseSpeedX + x, width / 2);
 
-  const rightStickVertical = deadzone(gamepad.axes[1]);
-  const transverseSpeedY = signedSqrt(rightStickVertical) * 10;
-  const newY = clamp(-height / 2, transverseSpeedY + y, height / 2);
+    const rightStickVertical = deadzone(gamepad.axes[1]);
+    const transverseSpeedY = signedSqrt(rightStickVertical) * 10;
+    const newY = clamp(-height / 2, transverseSpeedY + y, height / 2);
 
-  return {
-    speed: speed * speedEasterEgg,
-    rotationSpeed: rotationSpeed,
-    x: newX,
-    y: newY,
+    return {
+      speed: speed * speedEasterEgg,
+      rotationSpeed: rotationSpeed,
+      x: newX,
+      y: newY,
+    };
   };
+}
+
+const windowsArcadeButtonMapping: ArcadeButtonMapping = {
+  bigRightButtonIndex: 1,
+  bigLeftButtonIndex: 0,
+  smallRightButtonIndex: 3,
+  smallLeftButtonIndex: 2,
+};
+
+const linuxArcadeButtonMapping: ArcadeButtonMapping = {
+  bigRightButtonIndex: 0,
+  bigLeftButtonIndex: 3,
+  smallRightButtonIndex: 1,
+  smallLeftButtonIndex: 2,
 };
 
 function buildGamepadMovementStrategy(gamepad: Gamepad): MovementStrategy {
+  if (gamepad.id.includes('SPEEDLINK COMPETITION PRO (Vendor: ')) {
+    return arcadeGamepadMovementStrategyBuilder(windowsArcadeButtonMapping);
+  }
   if (gamepad.id.includes('SPEEDLINK COMPETITION PRO Game Controller for Android')) {
-    return arcadeGamepadMovementStrategy;
+    return arcadeGamepadMovementStrategyBuilder(linuxArcadeButtonMapping);
   }
   return stdGamepadMovementStrategy;
 }
