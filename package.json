@@ -44,7 +44,7 @@
     "typescript": "^5.2.2"
   },
   "scripts": {
-    "build": "parcel build index.html",
+    "build": "parcel build --public-url ./ index.html",
     "develop": "parcel index.html",
     "start": "yarn develop",
     "lint": "eslint --ext .ts,.tsx src/",
